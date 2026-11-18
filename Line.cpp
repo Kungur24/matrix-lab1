@@ -1,7 +1,6 @@
 #include "Line.h"
 #include "ConsoleHelper.h"
 #include <cstdlib>
-#include <ctime>
 #include <iostream>
 
 namespace
@@ -18,11 +17,13 @@ Line::Line(int length, int speed, bool epilepsyMode, bool randomColorPerSymbol)
     headX_(ConsoleHelper::width()),
     lastHeadX_(ConsoleHelper::width()),
     y_(0),
-    phase_(randomInt(0, 3)), 
+    phase_(randomInt(0, 3)),
     epilepsyMode_(epilepsyMode),
     randomColorPerSymbol_(randomColorPerSymbol),
     finished_(false),
-    lineColor_(10)
+    lineColor_(10),
+    lastMoveTime_(Clock::now()),
+    stepInterval_(1000 / speed)
 {
     int maxY = ConsoleHelper::height() - 3;
     if (maxY < 1) maxY = 1;
@@ -48,9 +49,8 @@ int Line::symbolY(int index, int headXPosition) const
     if (height < 3) return 0;
 
     int currentX = headXPosition + index;
-
     int totalPhase = (currentX + phase_) % 4;
-    if (totalPhase < 0) totalPhase += 4; 
+    if (totalPhase < 0) totalPhase += 4;
 
     int offset = 0;
     if (totalPhase == 0) offset = 0;
@@ -65,23 +65,29 @@ int Line::symbolY(int index, int headXPosition) const
     return targetY;
 }
 
-bool Line::step(int screenWidth, int screenHeight)
+bool Line::update(Clock::time_point now, int screenWidth, int screenHeight)
 {
     if (finished_) return false;
 
-    lastHeadX_ = headX_;
+    if (now - lastMoveTime_ < stepInterval_) {
+        return false;
+    }
 
+    lastMoveTime_ = now;
+    lastHeadX_ = headX_;
     --headX_;
 
     if (headX_ < -length_) {
         finished_ = true;
-        return false;
     }
+
     return true;
 }
 
-void Line::draw()
+void Line::draw() const
 {
+    if (finished_) return;
+
     for (int i = 0; i < length_; ++i) {
         int x = headX_ + i;
         if (x < 0 || x >= ConsoleHelper::width()) continue;
@@ -93,9 +99,6 @@ void Line::draw()
         if (epilepsyMode_) {
             color = randomColorPerSymbol_ ? chooseColor() : lineColor_;
         }
-        else {
-            color = 10;
-        }
 
         ConsoleHelper::moveCursor(x, y);
         ConsoleHelper::setColor(color);
@@ -104,7 +107,7 @@ void Line::draw()
     ConsoleHelper::resetColor();
 }
 
-void Line::eraseTail()
+void Line::eraseTail() const
 {
     int oldTailX = lastHeadX_ + (length_ - 1);
 
