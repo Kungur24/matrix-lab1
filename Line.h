@@ -1,19 +1,23 @@
 #pragma once
 #include <vector>
-#include <chrono>
+#include "Figure.h"
 #include "Symbol.h"
 
-class Line
+class Line : public Figure
 {
 public:
-    using Clock = std::chrono::steady_clock;
-
     Line(int length, int speed, bool epilepsyMode, bool randomColorPerSymbol);
 
-    bool update(Clock::time_point now, int screenWidth, int screenHeight);
-    void draw() const;
-    void eraseTail() const;
-    bool finished() const;
+    bool update(Clock::time_point now, int screenWidth, int screenHeight) override;
+    void draw() const override;
+    void erase() const override;
+    bool finished() const override;
+
+    // Методы для механики взрыва
+    int headX() const;
+    int headY() const;
+    bool isHeadOnScreen() const;
+    void shrinkByOne();
 
 private:
     int length_;

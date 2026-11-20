@@ -1,6 +1,8 @@
 #include "AppManager.h"
 #include "ConsoleHelper.h"
+#include "Figure.h"
 #include "Line.h"
+#include "Explosion.h"
 
 #include <iostream>
 #include <string>
@@ -55,23 +57,25 @@ namespace
 void AppManager::showHelp() const
 {
     std::cout
-        << "Matrix - Laboratory work 2, variant 13\n\n"
+        << "Matrix - Laboratory work 3, variant 13\n\n"
         << "Usage:\n"
         << "  matrix.exe\n"
-        << "  matrix.exe FREQUENCY SPEED LENGTH Y|N\n"
+        << "  matrix.exe FREQUENCY SPEED LENGTH Y|N PROBABILITY MIN_RADIUS MAX_RADIUS\n"
         << "  matrix.exe --help\n"
         << "  matrix.exe /?\n\n"
         << "FREQUENCY: 1..30 lines per second\n"
         << "SPEED: 1..30 characters per second\n"
         << "LENGTH: 1..30 characters\n"
         << "Y/N: epilepsy mode on/off\n"
-        << "Movement: right to left\n"
-        << "Shape: zig-zag\n";
+        << "PROBABILITY: 1..1000 explosion probability per step\n"
+        << "MIN_RADIUS: 1..10 minimum explosion radius\n"
+        << "MAX_RADIUS: MIN_RADIUS..10 maximum explosion radius\n";
 }
 
 bool AppManager::parseArguments(
     int argc, char* argv[],
-    int& frequency, int& speed, int& length, bool& epilepsy)
+    int& frequency, int& speed, int& length, bool& epilepsy,
+    int& explosionProb, int& minRadius, int& maxRadius)
 {
     if (argc == 2 &&
         (std::string(argv[1]) == "--help" ||
@@ -81,48 +85,63 @@ bool AppManager::parseArguments(
         return false;
     }
 
-    if (argc != 5)
+    if (argc != 8)
     {
-        std::cerr << "Expected FREQUENCY SPEED LENGTH Y/N.\n";
+        std::cerr << "Expected 7 parameters: FREQUENCY SPEED LENGTH Y/N PROBABILITY MIN_RADIUS MAX_RADIUS.\n";
         showHelp();
         return false;
     }
 
-    if (!parseInteger(argv[1], frequency) ||
-        frequency < 1 || frequency > 30)
+    if (!parseInteger(argv[1], frequency) || frequency < 1 || frequency > 30)
     {
         std::cerr << "Frequency must be from 1 to 30.\n";
         return false;
     }
 
-    if (!parseInteger(argv[2], speed) ||
-        speed < 1 || speed > 30)
+    if (!parseInteger(argv[2], speed) || speed < 1 || speed > 30)
     {
         std::cerr << "Speed must be from 1 to 30.\n";
         return false;
     }
 
-    if (!parseInteger(argv[3], length) ||
-        length < 1 || length > 30)
+    if (!parseInteger(argv[3], length) || length < 1 || length > 30)
     {
         std::cerr << "Length must be from 1 to 30.\n";
         return false;
     }
 
     std::string mode = argv[4];
-
     if (!validYesNo(mode))
     {
         std::cerr << "Epilepsy mode must be Y or N.\n";
         return false;
     }
-
     epilepsy = (mode == "Y" || mode == "y");
+
+    if (!parseInteger(argv[5], explosionProb) || explosionProb < 1 || explosionProb > 1000)
+    {
+        std::cerr << "Explosion probability must be from 1 to 1000.\n";
+        return false;
+    }
+
+    if (!parseInteger(argv[6], minRadius) || minRadius < 1 || minRadius > 10)
+    {
+        std::cerr << "Minimum radius must be from 1 to 10.\n";
+        return false;
+    }
+
+    if (!parseInteger(argv[7], maxRadius) || maxRadius < minRadius || maxRadius > 10)
+    {
+        std::cerr << "Maximum radius must be from " << minRadius << " to 10.\n";
+        return false;
+    }
+
     return true;
 }
 
 bool AppManager::readInteractive(
-    int& frequency, int& speed, int& length, bool& epilepsy)
+    int& frequency, int& speed, int& length, bool& epilepsy,
+    int& explosionProb, int& minRadius, int& maxRadius)
 {
     frequency = readValidatedInt("Line frequency (1-30): ", 1, 30);
     speed = readValidatedInt("Line speed (1-30): ", 1, 30);
@@ -143,6 +162,12 @@ bool AppManager::readInteractive(
         std::cout << "Enter Y or N.\n";
     }
 
+    explosionProb = readValidatedInt("Explosion probability (1-1000): ", 1, 1000);
+    minRadius = readValidatedInt("Minimum explosion radius (1-10): ", 1, 10);
+    maxRadius = readValidatedInt(
+        "Maximum explosion radius (" + std::to_string(minRadius) + "-10): ",
+        minRadius, 10);
+
     return true;
 }
 
@@ -160,7 +185,9 @@ std::vector<int> AppManager::generateSpawnDelays(int frequency) const
     return delays;
 }
 
-void AppManager::animate(int frequency, int speed, int length, bool epilepsy)
+void AppManager::animate(
+    int frequency, int speed, int length, bool epilepsy,
+    int explosionProb, int minRadius, int maxRadius)
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
@@ -169,7 +196,7 @@ void AppManager::animate(int frequency, int speed, int length, bool epilepsy)
 
     using Clock = std::chrono::steady_clock;
 
-    std::vector<std::unique_ptr<Line>> lines;
+    std::vector<std::unique_ptr<Figure>> figures;
     auto secondStart = Clock::now();
     std::vector<int> spawnDelays = generateSpawnDelays(frequency);
     size_t nextSpawnIndex = 0;
@@ -183,7 +210,7 @@ void AppManager::animate(int frequency, int speed, int length, bool epilepsy)
         {
             while (nextSpawnIndex < spawnDelays.size())
             {
-                lines.push_back(std::make_unique<Line>(length, speed, epilepsy, true));
+                figures.push_back(std::make_unique<Line>(length, speed, epilepsy, true));
                 ++nextSpawnIndex;
             }
 
@@ -195,7 +222,7 @@ void AppManager::animate(int frequency, int speed, int length, bool epilepsy)
 
         while (nextSpawnIndex < spawnDelays.size() && elapsedMs >= spawnDelays[nextSpawnIndex])
         {
-            lines.push_back(std::make_unique<Line>(length, speed, epilepsy, true));
+            figures.push_back(std::make_unique<Line>(length, speed, epilepsy, true));
             ++nextSpawnIndex;
         }
 
@@ -203,27 +230,46 @@ void AppManager::animate(int frequency, int speed, int length, bool epilepsy)
         int screenH = ConsoleHelper::height();
         bool anyMoved = false;
 
-        for (auto& line : lines)
+        std::vector<std::unique_ptr<Figure>> newExplosions;
+
+        for (auto& fig : figures)
         {
-            if (line->update(now, screenW, screenH))
+            if (fig->update(now, screenW, screenH))
             {
-                line->eraseTail();
+                fig->erase();
                 anyMoved = true;
+
+                if (auto* line = dynamic_cast<Line*>(fig.get()))
+                {
+                    if (line->isHeadOnScreen() && (std::rand() % 1000 + 1) <= explosionProb)
+                    {
+                        int radius = minRadius + std::rand() % (maxRadius - minRadius + 1);
+                        newExplosions.push_back(
+                            std::make_unique<Explosion>(line->headX(), line->headY(), radius));
+                        line->shrinkByOne();
+                    }
+                }
             }
+        }
+
+        for (auto& exp : newExplosions)
+        {
+            figures.push_back(std::move(exp));
+            anyMoved = true;
         }
 
         if (anyMoved)
         {
-            for (const auto& line : lines)
+            for (const auto& fig : figures)
             {
-                line->draw();
+                fig->draw();
             }
         }
 
-        lines.erase(
-            std::remove_if(lines.begin(), lines.end(),
-                [](const std::unique_ptr<Line>& l) { return l->finished(); }),
-            lines.end());
+        figures.erase(
+            std::remove_if(figures.begin(), figures.end(),
+                [](const std::unique_ptr<Figure>& f) { return f->finished(); }),
+            figures.end());
 
         ConsoleHelper::sleepMilliseconds(5);
     }
@@ -235,17 +281,20 @@ int AppManager::run(int argc, char* argv[])
     int speed = 10;
     int length = 10;
     bool epilepsy = false;
+    int explosionProb = 100;
+    int minRadius = 1;
+    int maxRadius = 4;
 
     if (argc == 1)
     {
-        readInteractive(frequency, speed, length, epilepsy);
+        readInteractive(frequency, speed, length, epilepsy, explosionProb, minRadius, maxRadius);
     }
     else
     {
-        if (!parseArguments(argc, argv, frequency, speed, length, epilepsy))
+        if (!parseArguments(argc, argv, frequency, speed, length, epilepsy, explosionProb, minRadius, maxRadius))
             return 0;
     }
 
-    animate(frequency, speed, length, epilepsy);
+    animate(frequency, speed, length, epilepsy, explosionProb, minRadius, maxRadius);
     return 0;
 }

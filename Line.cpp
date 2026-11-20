@@ -67,7 +67,11 @@ int Line::symbolY(int index, int headXPosition) const
 
 bool Line::update(Clock::time_point now, int screenWidth, int screenHeight)
 {
-    if (finished_) return false;
+    if (finished_ || length_ <= 0)
+    {
+        finished_ = true;
+        return false;
+    }
 
     if (now - lastMoveTime_ < stepInterval_) {
         return false;
@@ -86,7 +90,7 @@ bool Line::update(Clock::time_point now, int screenWidth, int screenHeight)
 
 void Line::draw() const
 {
-    if (finished_) return;
+    if (finished_ || length_ <= 0) return;
 
     for (int i = 0; i < length_; ++i) {
         int x = headX_ + i;
@@ -107,8 +111,10 @@ void Line::draw() const
     ConsoleHelper::resetColor();
 }
 
-void Line::eraseTail() const
+void Line::erase() const
 {
+    if (length_ <= 0) return;
+
     int oldTailX = lastHeadX_ + (length_ - 1);
 
     if (oldTailX >= 0 && oldTailX < ConsoleHelper::width()) {
@@ -121,4 +127,38 @@ void Line::eraseTail() const
     }
 }
 
-bool Line::finished() const { return finished_; }
+bool Line::finished() const { return finished_ || length_ <= 0; }
+
+int Line::headX() const { return headX_; }
+
+int Line::headY() const { return symbolY(0, headX_); }
+
+bool Line::isHeadOnScreen() const
+{
+    return !finished_ && length_ > 0 && headX_ >= 0 && headX_ < ConsoleHelper::width();
+}
+
+void Line::shrinkByOne()
+{
+    if (length_ <= 0 || symbols_.empty()) return;
+
+    // Стираем текущий первый символ (центр взрыва)
+    int hx = headX();
+    int hy = headY();
+    if (hx >= 0 && hx < ConsoleHelper::width() && hy >= 0 && hy < ConsoleHelper::height())
+    {
+        ConsoleHelper::moveCursor(hx, hy);
+        std::cout << ' ' << std::flush;
+    }
+
+    // Удаляем первый символ и уменьшаем длину на 1
+    symbols_.erase(symbols_.begin());
+    --length_;
+    ++headX_; // Следующий символ становится новой головой на своей прежней X-координате
+    lastHeadX_ = headX_;
+
+    if (length_ <= 0)
+    {
+        finished_ = true;
+    }
+}
